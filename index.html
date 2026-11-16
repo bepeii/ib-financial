@@ -133,6 +133,9 @@
   .eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:rgba(255,255,255,.7);font-size:18px;padding:8px;cursor:pointer;}
   .login .btn{margin-top:14px;padding:14px;}
   .login .msg{min-height:20px;font-size:13px;color:#FCA5A5;margin-top:12px;text-align:center;}
+  .login form input + input, .login form .pw-wrap + input, .login form input + .pw-wrap{margin-top:10px;}
+  .linkswitch{margin-top:18px;background:none;border:none;color:#93C5FD;font:inherit;font-size:13px;cursor:pointer;text-decoration:underline;}
+  .linkswitch:focus-visible{outline:2px solid #93C5FD;outline-offset:3px;}
 </style>
 </head>
 <body>
@@ -141,7 +144,7 @@
 <div class="login" id="loginScreen">
   <div class="logo big"></div>
   <h1>ib financial</h1>
-  <p>Keuangan pribadi Anda. Masukkan password untuk melanjutkan.</p>
+  <p id="loginIntro">Keuangan pribadi Anda. Masukkan password Anda untuk melanjutkan.</p>
   <form id="loginForm" autocomplete="on">
     <input type="text" name="username" value="ib financial" autocomplete="username" style="display:none">
     <div class="pw-wrap">
@@ -151,6 +154,15 @@
     <button type="submit" class="btn btn-primary" id="btnLogin">Masuk</button>
     <div class="msg" id="loginMsg"></div>
   </form>
+  <form id="daftarForm" style="display:none" autocomplete="on">
+    <input type="text" id="dfKode" placeholder="Kode undangan" autocomplete="one-time-code" autocapitalize="characters" required>
+    <input type="text" id="dfNama" placeholder="Nama Anda" autocomplete="name" required>
+    <input type="password" id="dfPw" placeholder="Buat password (minimal 8 karakter)" autocomplete="new-password" minlength="8" required>
+    <input type="password" id="dfPw2" placeholder="Ulangi password" autocomplete="new-password" minlength="8" required>
+    <button type="submit" class="btn btn-primary" id="btnDaftar">Daftar &amp; Masuk</button>
+    <div class="msg" id="daftarMsg"></div>
+  </form>
+  <button type="button" class="linkswitch" id="toDaftar">Punya kode undangan? Daftar di sini</button>
 </div>
 
 <div class="header">
@@ -207,6 +219,7 @@
   <section class="view" id="view-info">
     <div class="card">
       <h3 class="sec-title">Tentang Aplikasi</h3>
+      <div class="info-row"><span class="ic">👤</span><span>Masuk sebagai <b id="infoNama">-</b>. Setiap pengguna punya spreadsheet sendiri, jadi datanya tidak tercampur.</span></div>
       <div class="info-row"><span class="ic">📊</span><span>Data tersimpan langsung di Google Spreadsheet Anda.</span></div>
       <div class="info-row"><span class="ic">🔒</span><span>Dilindungi password. Sesi login berlaku 30 hari di perangkat ini.</span></div>
       <div class="info-row"><span class="ic">📄</span><span><a class="linklike" href="#" id="openSheetLink" target="_blank" rel="noopener">Buka spreadsheet sumber data</a></span></div>
@@ -279,6 +292,7 @@
 <script>
   var API_URL = 'https://script.google.com/macros/s/AKfycbwLrZQDk5ze6iJt-ekLYBAJU15y7c4k7nxKmoAr-BcaaehgXLT47-Bf1zwmj_yZTplV/exec';
   var TOKEN_KEY = 'ibf_token';
+  var NAME_KEY = 'ibf_nama';
   var KELOMPOK_COLOR = {'Kebutuhan':'#2563EB','Keinginan':'#F59E0B','Tabungan/Investasi':'#06B6D4'};
   var state = { kategori:[], metode:[], period:'month', trxList:[], editingRow:null };
   var chartKelompok = null;
@@ -286,6 +300,8 @@
   // ---------- Util ----------
   function getToken(){ try { return localStorage.getItem(TOKEN_KEY); } catch(e){ return window.__tok || null; } }
   function setToken(t){ window.__tok = t; try { if(t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch(e){} }
+  function getNama(){ try { return localStorage.getItem(NAME_KEY) || window.__nama || ''; } catch(e){ return window.__nama || ''; } }
+  function setNama(n){ window.__nama = n || ''; try { if(n) localStorage.setItem(NAME_KEY, n); else localStorage.removeItem(NAME_KEY); } catch(e){} var el = document.getElementById('infoNama'); if(el) el.textContent = n || '-'; greet(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function rupiah(n){ n = Number(n)||0; return (n<0?'-':'') + 'Rp ' + Math.abs(Math.round(n)).toLocaleString('id-ID'); }
   function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
@@ -316,7 +332,7 @@
       body: JSON.stringify({ action: action, args: args || [], token: getToken() })
     }).then(function(r){ return r.json(); }).then(function(res){
       if(res.ok) return res.data;
-      if(res.auth === false){ setToken(null); showLogin(res.error); }
+      if(res.auth === false){ setToken(null); setNama(''); showLogin(res.error); }
       var err = new Error(res.error || 'Terjadi kesalahan'); err.auth = res.auth; throw err;
     });
   }
@@ -339,7 +355,7 @@
     var pw = document.getElementById('loginPw').value;
     btn.disabled = true; btn.textContent = 'Memeriksa...'; msg.textContent = '';
     api('login', [pw]).then(function(d){
-      setToken(d.token);
+      setToken(d.token); setNama(d.nama);
       document.getElementById('loginPw').value = '';
       hideLogin(); loadAll();
     }).catch(function(err){ msg.textContent = err.message; })
@@ -347,7 +363,34 @@
   });
   document.getElementById('btnLogout').addEventListener('click', function(){
     if(!confirm('Keluar dari aplikasi di perangkat ini?')) return;
-    api('logout').catch(function(){}).then(function(){ setToken(null); showLogin('Anda sudah keluar.'); });
+    api('logout').catch(function(){}).then(function(){ setToken(null); setNama(''); showLogin('Anda sudah keluar.'); });
+  });
+
+  // ---------- Daftar dengan kode undangan ----------
+  var daftarMode = false;
+  document.getElementById('toDaftar').addEventListener('click', function(){
+    daftarMode = !daftarMode;
+    document.getElementById('loginForm').style.display = daftarMode ? 'none' : '';
+    document.getElementById('daftarForm').style.display = daftarMode ? '' : 'none';
+    document.getElementById('loginIntro').textContent = daftarMode ? 'Masukkan kode undangan dari pemilik aplikasi, lalu buat password Anda sendiri.' : 'Keuangan pribadi Anda. Masukkan password Anda untuk melanjutkan.';
+    this.textContent = daftarMode ? 'Sudah punya password? Masuk di sini' : 'Punya kode undangan? Daftar di sini';
+    document.getElementById('loginMsg').textContent = ''; document.getElementById('daftarMsg').textContent = '';
+  });
+  document.getElementById('daftarForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var msg = document.getElementById('daftarMsg'), btn = document.getElementById('btnDaftar');
+    var kode = document.getElementById('dfKode').value.trim(), nama = document.getElementById('dfNama').value.trim();
+    var pw = document.getElementById('dfPw').value, pw2 = document.getElementById('dfPw2').value;
+    if(pw !== pw2){ msg.textContent = 'Password tidak sama.'; return; }
+    if(pw.length < 8){ msg.textContent = 'Password minimal 8 karakter.'; return; }
+    btn.disabled = true; btn.textContent = 'Mendaftar...'; msg.textContent = '';
+    api('daftar', [kode, nama, pw]).then(function(d){
+      setToken(d.token); setNama(d.nama);
+      document.getElementById('daftarForm').reset();
+      document.getElementById('toDaftar').click();
+      hideLogin(); loadAll();
+    }).catch(function(err){ msg.textContent = err.message; })
+      .then(function(){ btn.disabled = false; btn.textContent = 'Daftar & Masuk'; });
   });
 
   // ---------- Ganti password ----------
@@ -610,10 +653,14 @@
   // ---------- INIT ----------
   function greet(){
     var h = new Date().getHours();
-    document.getElementById('greetText').textContent = h<11 ? 'Selamat pagi' : (h<15 ? 'Selamat siang' : (h<18 ? 'Selamat sore' : 'Selamat malam'));
+    var g = h<11 ? 'Selamat pagi' : (h<15 ? 'Selamat siang' : (h<18 ? 'Selamat sore' : 'Selamat malam'));
+    var n = getNama();
+    document.getElementById('greetText').textContent = n ? g + ', ' + n : g;
   }
   function loadAll(){
     greet();
+    var el = document.getElementById('infoNama'); if(el) el.textContent = getNama() || '-';
+    api('profil').then(function(p){ setNama(p.nama); }).catch(function(){});
     loadKategori(); loadDashboard(); loadRiwayat(); loadStatistik();
     api('getSpreadsheetUrl').then(function(url){ document.getElementById('openSheetLink').href = url; }).catch(function(){});
   }
