@@ -100,6 +100,18 @@
   .sheet h2{font-size:17px;margin:0 0 16px;}
   .field{margin-bottom:14px;}
   .field label{font-size:12px;color:var(--text2);display:block;margin-bottom:6px;}
+  .field textarea{width:100%;padding:11px 13px;border-radius:12px;border:1px solid #E3E7F1;font-size:14px;font-family:inherit;color:var(--text);background:#FAFBFF;outline:none;resize:vertical;}
+  .field textarea:focus{border-color:var(--primary);}
+  .imp-item{padding:12px 0;border-bottom:1px solid #EEF1F7;}
+  .imp-item:last-child{border-bottom:none;padding-bottom:0;}
+  .imp-top{display:flex;justify-content:space-between;gap:10px;font-weight:600;font-size:14px;}
+  .imp-top .trx-amt{white-space:nowrap;}
+  .imp-isi{font-size:12px;color:var(--text2);margin:4px 0 10px;word-break:break-word;line-height:1.45;}
+  .imp-act{display:flex;gap:8px;}
+  .imp-act button{flex:1;padding:9px;border-radius:10px;border:1px solid #E3E7F1;background:#fff;font-family:inherit;font-weight:600;font-size:13px;cursor:pointer;color:var(--text);}
+  .imp-act button.ok{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .imp-act button:disabled{opacity:.5;}
+  .kunci-box{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:#F3F6FD;padding:10px 12px;border-radius:10px;word-break:break-all;margin:6px 0;user-select:all;}
   .field input,.field select{width:100%;padding:11px 13px;border-radius:12px;border:1px solid #E3E7F1;font-size:15px;font-family:inherit;color:var(--text);background:#FAFBFF;outline:none;}
   .field input:focus,.field select:focus{border-color:var(--primary);}
   .seg{display:flex;background:#F0F3FA;border-radius:12px;padding:4px;margin-bottom:14px;}
@@ -185,6 +197,10 @@
 
 <div class="content">
   <section class="view active" id="view-beranda">
+    <div class="card" id="imporCard" style="display:none;">
+      <h3 class="sec-title">Dari notifikasi bank <span id="imporCount"></span></h3>
+      <div id="imporList"></div>
+    </div>
     <div class="card">
       <div class="row-2">
         <div class="stat in"><div class="label">Pemasukan</div><div class="val" id="statIn">Rp 0</div></div>
@@ -229,6 +245,17 @@
       <div class="info-row" id="installRow" style="display:none;"><span class="ic">⬇️</span><span><button class="linkbtn" id="btnInstall">Instal ib financial di perangkat ini</button></span></div>
       <div class="info-row"><span class="ic">🤖</span><span><b>Android (Chrome):</b> menu titik tiga → "Instal aplikasi" / "Tambahkan ke Layar Utama".</span></div>
       <div class="info-row"><span class="ic">🍏</span><span><b>iPhone (Safari):</b> ikon Bagikan → "Tambahkan ke Layar Utama".</span></div>
+    </div>
+    <div class="card">
+      <h3 class="sec-title">Catat otomatis dari notifikasi Livin'</h3>
+      <div class="info-row"><span class="ic">📲</span><span>Notifikasi transaksi Livin' di HP Android diteruskan ke ib financial, lalu muncul di Beranda untuk Anda konfirmasi sebelum dicatat.</span></div>
+      <div class="info-row"><span class="ic">🔗</span><span id="imporStatus">Memuat status...</span></div>
+      <div id="kunciBox" style="display:none;"></div>
+      <div class="info-row"><span class="ic">🗝️</span><span><button class="linkbtn" id="btnKunci">Buat kunci impor baru</button></span></div>
+      <div class="info-row" id="rowPutus" style="display:none;"><span class="ic">⛔</span><span><button class="linkbtn danger" id="btnPutus">Putuskan HP dari ib financial</button></span></div>
+      <div class="field" style="margin-top:12px;"><label>Uji pembaca notifikasi</label><textarea id="ujiTeks" rows="3" placeholder="Tempel teks notifikasi Livin' di sini"></textarea></div>
+      <button class="linkbtn" id="btnUji" style="font-size:14px;">Uji pembacaan</button>
+      <div id="ujiHasil" class="imp-isi" style="margin-top:8px;"></div>
     </div>
     <div class="card">
       <h3 class="sec-title">Keamanan</h3>
@@ -574,7 +601,7 @@
   overlay.addEventListener('click', function(e){ if(e.target===overlay) closeSheet(); });
 
   function openAdd(){
-    state.editingRow = null;
+    state.editingRow = null; state.imporId = null;
     document.getElementById('sheetTitle').textContent = 'Tambah Transaksi';
     document.getElementById('btnDelete').style.display = 'none';
     document.getElementById('trxForm').reset();
@@ -583,6 +610,7 @@
     overlay.classList.add('show');
   }
   function openEdit(row){
+    state.imporId = null;
     var t = state.trxList.filter(function(x){ return x.row===row; })[0];
     if(!t) return;
     state.editingRow = row;
@@ -606,7 +634,7 @@
   }
   document.querySelectorAll('#segJenis button').forEach(function(b){ b.addEventListener('click', function(){ setJenis(b.dataset.j); }); });
 
-  function afterChange(msg){ closeSheet(); toast(msg); loadRiwayat(); loadDashboard(); loadStatistik(); }
+  function afterChange(msg){ closeSheet(); toast(msg); state.imporId = null; loadRiwayat(); loadDashboard(); loadStatistik(); loadImpor(); }
 
   document.getElementById('trxForm').addEventListener('submit', function(e){
     e.preventDefault();
@@ -622,7 +650,7 @@
     if(!data.tanggal || !data.kategori || !data.jumlah || !data.metode){ toast('Lengkapi data terlebih dahulu'); return; }
     var btn = document.getElementById('btnSave');
     btn.disabled = true; btn.textContent = 'Menyimpan...';
-    var p = state.editingRow ? api('editTransaksi', [state.editingRow, data]) : api('tambahTransaksi', [data]);
+    var p = state.imporId ? api('catatImpor', [state.imporId, data]) : (state.editingRow ? api('editTransaksi', [state.editingRow, data]) : api('tambahTransaksi', [data]));
     p.then(function(){ afterChange('Tersimpan'); })
      .catch(function(err){ toast('Gagal: ' + err.message); })
      .then(function(){ btn.disabled = false; btn.textContent = 'Simpan'; });
@@ -657,11 +685,100 @@
     var n = getNama();
     document.getElementById('greetText').textContent = n ? g + ', ' + n : g;
   }
+  // ---------- IMPOR NOTIFIKASI LIVIN' ----------
+  state.imporList = []; state.imporId = null;
+  function loadImpor(){
+    api('getImpor').then(function(list){ state.imporList = list || []; renderImpor(); }).catch(function(){});
+  }
+  function renderImpor(){
+    var l = state.imporList;
+    document.getElementById('imporCard').style.display = l.length ? 'block' : 'none';
+    document.getElementById('imporCount').textContent = l.length ? '(' + l.length + ')' : '';
+    document.getElementById('imporList').innerHTML = l.map(function(x){
+      var info = [esc(x.waktu), esc(x.jenis || 'Jenis belum jelas')];
+      if(x.kategori) info.push(esc(x.kategori));
+      return '<div class="imp-item"><div class="imp-top"><span>' + esc(x.keterangan || x.judul || 'Transaksi') + '</span>' +
+        '<span class="trx-amt' + (x.jenis === 'Pemasukan' ? ' in' : '') + '">' + (x.jumlah ? rupiah(x.jumlah) : '-') + '</span></div>' +
+        '<div class="imp-isi">' + info.join(' · ') + '<br>' + esc(x.isi) + '</div>' +
+        '<div class="imp-act"><button class="ok" data-catat="' + esc(x.id) + '">Periksa &amp; catat</button><button data-abaikan="' + esc(x.id) + '">Abaikan</button></div></div>';
+    }).join('');
+  }
+  document.getElementById('imporList').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if(!b) return;
+    if(b.dataset.catat){
+      var it = state.imporList.filter(function(x){ return x.id === b.dataset.catat; })[0];
+      if(it) openImpor(it);
+    } else if(b.dataset.abaikan){
+      b.disabled = true;
+      api('abaikanImpor', [b.dataset.abaikan]).then(function(){ toast('Notifikasi diabaikan'); loadImpor(); })
+        .catch(function(err){ b.disabled = false; toast('Gagal: ' + err.message); });
+    }
+  });
+  function openImpor(x){
+    openAdd();
+    state.imporId = x.id;
+    document.getElementById('sheetTitle').textContent = 'Catat dari Notifikasi';
+    if(x.jenis === 'Pemasukan' || x.jenis === 'Pengeluaran') setJenis(x.jenis);
+    var tgl = String(x.waktu || '').slice(0, 10);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(tgl)) document.getElementById('fTanggal').value = tgl;
+    if(x.kategori) document.getElementById('fKategori').value = x.kategori;
+    document.getElementById('fJumlah').value = x.jumlah || '';
+    document.getElementById('fDeskripsi').value = x.keterangan || '';
+    var m = document.getElementById('fMetode');
+    [/livin|mandiri/i, /transfer|bank|debit/i].some(function(re){
+      return [].some.call(m.options, function(o){ if(re.test(o.value)){ m.value = o.value; return true; } return false; });
+    });
+    document.getElementById('fCatatan').value = "Dari notifikasi Livin'";
+  }
+  function loadStatusImpor(){
+    api('statusImpor').then(function(s){
+      document.getElementById('imporStatus').textContent = s.terhubung
+        ? ('Terhubung. Notifikasi terakhir diterima: ' + (s.terakhir || 'belum ada'))
+        : 'Belum terhubung ke HP mana pun.';
+      document.getElementById('rowPutus').style.display = s.terhubung ? 'flex' : 'none';
+      state.imporTerhubung = !!s.terhubung;
+    }).catch(function(){});
+  }
+  document.getElementById('btnKunci').addEventListener('click', function(){
+    if(state.imporTerhubung && !confirm('Kunci lama akan berhenti berfungsi dan HP harus diatur ulang dengan kunci baru. Lanjutkan?')) return;
+    api('buatKunciImpor').then(function(r){
+      var box = document.getElementById('kunciBox');
+      box.innerHTML = '<div class="kunci-box" id="kunciTeks">' + esc(r.kunci) + '</div>' +
+        '<button class="linkbtn" id="btnSalinKunci">Salin kunci</button>' +
+        '<div class="imp-isi" style="margin-top:8px;">Kunci ini hanya ditampilkan sekali. Perlakukan seperti password. ' +
+        'Di MacroDroid, buat aksi HTTP Request (POST, content type text/plain) ke:<br><span class="kunci-box" style="display:block;">' + esc(API_URL) + '</span>' +
+        'Isi badan permintaan 4 baris:<br>1. IBF-IMPOR<br>2. kunci di atas<br>3. [not_title]<br>4. [notification]</div>';
+      box.style.display = 'block';
+      document.getElementById('btnSalinKunci').addEventListener('click', function(){
+        if(navigator.clipboard) navigator.clipboard.writeText(r.kunci).then(function(){ toast('Kunci disalin'); }, function(){ toast('Salin manual dari kotak di atas'); });
+        else toast('Salin manual dari kotak di atas');
+      });
+      loadStatusImpor();
+    }).catch(function(err){ toast('Gagal: ' + err.message); });
+  });
+  document.getElementById('btnPutus').addEventListener('click', function(){
+    if(!confirm('Putuskan HP? Notifikasi baru tidak akan diterima sampai Anda membuat kunci baru.')) return;
+    api('cabutKunciImpor').then(function(){
+      document.getElementById('kunciBox').style.display = 'none';
+      toast('HP diputuskan'); loadStatusImpor();
+    }).catch(function(err){ toast('Gagal: ' + err.message); });
+  });
+  document.getElementById('btnUji').addEventListener('click', function(){
+    var t = document.getElementById('ujiTeks').value.trim();
+    var out = document.getElementById('ujiHasil');
+    if(!t){ toast('Tempel teks notifikasi dulu'); return; }
+    out.textContent = 'Membaca...';
+    api('ujiNotif', [t]).then(function(r){
+      if(r.abaikan){ out.textContent = 'Akan diabaikan (' + (r.abaikan === 'promosi' ? 'terbaca sebagai promosi' : 'tidak ada nominal Rp') + ').'; return; }
+      out.innerHTML = 'Jenis: <b>' + esc(r.jenis || 'belum jelas') + '</b><br>Jumlah: <b>' + rupiah(r.jumlah) + '</b><br>Keterangan: <b>' + esc(r.keterangan) + '</b><br>Kategori: <b>' + esc(r.kategori || 'pilih manual') + '</b>';
+    }).catch(function(err){ out.textContent = 'Gagal: ' + err.message; });
+  });
+
   function loadAll(){
     greet();
     var el = document.getElementById('infoNama'); if(el) el.textContent = getNama() || '-';
     api('profil').then(function(p){ setNama(p.nama); }).catch(function(){});
-    loadKategori(); loadDashboard(); loadRiwayat(); loadStatistik();
+    loadKategori(); loadDashboard(); loadRiwayat(); loadStatistik(); loadImpor(); loadStatusImpor();
     api('getSpreadsheetUrl').then(function(url){ document.getElementById('openSheetLink').href = url; }).catch(function(){});
   }
   if(getToken()){ hideLogin(); loadAll(); } else { showLogin(); }
